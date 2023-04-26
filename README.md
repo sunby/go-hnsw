@@ -1,5 +1,7 @@
 # go-hnsw
 
+Fork from Bithack/go-hnsw.
+
 go-hnsw is a GO implementation of the HNSW approximate nearest-neighbour search algorithm implemented in C++ in https://github.com/searchivarius/nmslib and described in https://arxiv.org/abs/1603.09320
 
 ## Usage
@@ -16,7 +18,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/Bithack/go-hnsw"
+	"github.com/sunby/go-hnsw"
 )
 
 func main() {
