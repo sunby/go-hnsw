@@ -120,7 +120,7 @@ func search(h *Hnsw, queries []Point, truth [][]uint32, efSearch int) float64 {
 		wg.Add(1)
 		go func(queries []Point, truth [][]uint32) {
 			for j := range queries {
-				results := h.Search(queries[j], efSearch, 10)
+				results := h.Search(queries[j], efSearch, 10, nil)
 				// calc 10-NN precision
 				for results.Len() > 10 {
 					results.Pop()

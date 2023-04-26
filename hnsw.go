@@ -22,6 +22,8 @@ func (a Point) Size() int {
 	return len(a) * 4
 }
 
+type FilterFunc func(id uint32) bool
+
 type node struct {
 	sync.RWMutex
 	locked  bool
@@ -458,7 +460,7 @@ func (h *Hnsw) Add(q Point, id uint32) {
 	for level := min(curlevel, currentMaxLayer); level >= 0; level-- {
 
 		resultSet := &distqueue.DistQueueClosestLast{}
-		h.searchAtLayer(q, resultSet, h.efConstruction, ep, level)
+		h.searchAtLayer(q, resultSet, h.efConstruction, ep, level, nil)
 		switch h.DelaunayType {
 		case 0:
 			// shrink resultSet to M closest elements (the simple heuristic)
@@ -499,7 +501,7 @@ func (h *Hnsw) Add(q Point, id uint32) {
 	h.Unlock()
 }
 
-func (h *Hnsw) searchAtLayer(q Point, resultSet *distqueue.DistQueueClosestLast, efConstruction int, ep *distqueue.Item, level int) {
+func (h *Hnsw) searchAtLayer(q Point, resultSet *distqueue.DistQueueClosestLast, efConstruction int, ep *distqueue.Item, level int, filter FilterFunc) {
 
 	var pool, visited = h.bitset.Get()
 	//visited := make(map[uint32]bool)
@@ -516,7 +518,7 @@ func (h *Hnsw) searchAtLayer(q Point, resultSet *distqueue.DistQueueClosestLast,
 		_, lowerBound := resultSet.Top() // worst distance so far
 		c := candidates.Pop()
 
-		if c.D > lowerBound {
+		if resultSet.Len() == efConstruction && c.D > lowerBound {
 			// since candidates is sorted, it wont get any better...
 			break
 		}
@@ -529,11 +531,17 @@ func (h *Hnsw) searchAtLayer(q Point, resultSet *distqueue.DistQueueClosestLast,
 					d := h.DistFunc(q, h.nodes[n].p)
 					_, topD := resultSet.Top()
 					if resultSet.Len() < efConstruction {
-						item := resultSet.Push(n, d)
+						if filter == nil || filter(n) {
+							resultSet.Push(n, d)
+						}
+						item := &distqueue.Item{ID: n, D: d}
 						candidates.PushItem(item)
 					} else if topD > d {
 						// keep length of resultSet to max efConstruction
-						item := resultSet.PopAndPush(n, d)
+						if filter == nil || filter(n) {
+							resultSet.PopAndPush(n, d)
+						}
+						item := &distqueue.Item{ID: n, D: d}
 						candidates.PushItem(item)
 					}
 				}
@@ -563,7 +571,7 @@ func (h *Hnsw) SearchBrute(q Point, K int) *distqueue.DistQueueClosestLast {
 
 // Benchmark test precision by comparing the results of SearchBrute and Search
 func (h *Hnsw) Benchmark(q Point, ef int, K int) float64 {
-	result := h.Search(q, ef, K)
+	result := h.Search(q, ef, K, nil)
 	groundTruth := h.SearchBrute(q, K)
 	truth := make([]uint32, 0)
 	for groundTruth.Len() > 0 {
@@ -581,7 +589,7 @@ func (h *Hnsw) Benchmark(q Point, ef int, K int) float64 {
 	return float64(p) / float64(K)
 }
 
-func (h *Hnsw) Search(q Point, ef int, K int) *distqueue.DistQueueClosestLast {
+func (h *Hnsw) Search(q Point, ef int, K int, filter FilterFunc) *distqueue.DistQueueClosestLast {
 
 	h.RLock()
 	currentMaxLayer := h.maxLayer
@@ -603,7 +611,7 @@ func (h *Hnsw) Search(q Point, ef int, K int) *distqueue.DistQueueClosestLast {
 			}
 		}
 	}
-	h.searchAtLayer(q, resultSet, ef, ep, 0)
+	h.searchAtLayer(q, resultSet, ef, ep, 0, filter)
 
 	for resultSet.Len() > K {
 		resultSet.Pop()
